@@ -1,0 +1,10 @@
+EXE_INC = \
+    -I. \
+    -I../solidDisplacementFoam \
+    -ItractionDisplacementCorrection \
+    -I$(LIB_SRC)/finiteVolume/lnInclude \
+    -I$(LIB_SRC)/meshTools/lnInclude
+
+EXE_LIBS = \
+    -lfiniteVolume \
+    -lmeshTools

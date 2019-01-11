@@ -1,0 +1,148 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# =========                 |
+# \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+#  \\    /   O peration     | Website:  https://openfoam.org
+#   \\  /    A nd           | Copyright (C) 2015-2018 OpenFOAM Foundation
+#    \\/     M anipulation  |
+#------------------------------------------------------------------------------
+# License
+#     This file is part of OpenFOAM.
+#
+#     OpenFOAM is free software: you can redistribute it and/or modify it
+#     under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     (at your option) any later version.
+#
+#     OpenFOAM is distributed in the hope that it will be useful, but WITHOUT
+#     ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+#     FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+#     for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
+#
+# Script
+#     foamCreateVideo
+#
+# Description
+#     Creates a video file from PNG images
+#     - requires avconv or mencoder
+#
+#------------------------------------------------------------------------------
+
+usage() {
+    cat <<USAGE
+
+Usage: ${0##*/} [OPTIONS] ...
+options:
+  -dir   | -d <dir>   directory containing png images (default local dir)
+  -fps   | -f <fps>   frames per second (default = 10)
+  -help  | -h         print the usage
+  -image | -i <name>  name of image sequence (default = image)
+  -out   | -o <name>  name of output video file (default = video)
+  -start | -s <frame> specify the start frame number for avconv
+  -webm  | -w         WebM output video file format
+
+Creates a video file from a sequence of PNG images
+- A sequence named "image" will expect files image.0000.png, image.0001.png, etc
+- The default output video compression format is MPEG-4, with WebM as an option
+- The default file name, using MPEG-4 compression, is video.mp4
+- By default the video codec is high resolution
+
+Requires avconv or mencoder for MPEG-4 output, avconv for WebM output
+
+USAGE
+}
+
+error() {
+    exec 1>&2
+    while [ "$#" -ge 1 ]; do echo "$1"; shift; done
+    usage
+    exit 1
+}
+
+# Default settings
+dir=.
+image=image
+video=video
+fps=10
+fmt=mp4
+
+while [ "$#" -gt 0 ]
+do
+   case "$1" in
+   -h | -help)
+      usage && exit 0
+      ;;
+   -d | -dir)
+      [ "$#" -ge 2 ] || error "'$1' option requires an argument"
+      dir=$2
+      shift 2
+      ;;
+   -f | -fps)
+      [ "$#" -ge 2 ] || error "'$1' option requires an argument"
+      fps=$2
+      shift 2
+      ;;
+   -i | -image)
+      [ "$#" -ge 2 ] || error "'$1' option requires an argument"
+      image=$2
+      shift 2
+      ;;
+   -o | -out)
+      [ "$#" -ge 2 ] || error "'$1' option requires an argument"
+      video=$2
+      shift 2
+      ;;
+   -w | -webm)
+      fmt=webm
+      echo "Selected $fmt format, requires avconv..."
+      shift
+      ;;
+   -*)
+      error "invalid option '$1'"
+      ;;
+   *)
+      break
+      ;;
+    esac
+done
+
+#
+# MAIN
+#
+
+[ -f "$(find "$dir" -name "$image.*.png" | sort | head -1)" ] || \
+    error "Cannot find first file in image sequence"
+
+if [ "$fmt" = "webm" ] ; then
+    if command -v avconv >/dev/null 2>&1 ; then
+        echo "Creating image with avconv..."
+        avconv \
+            -framerate "$fps" \
+            -i "${dir}/${image}.%04d.png" \
+            -c:v libvpx -crf 15 -b:v 1M \
+            "$video.$fmt"
+    else
+        error "Please install avconv"
+    fi
+else
+    if command -v avconv >/dev/null 2>&1 ; then
+        echo "Creating image with avconv..."
+        avconv \
+            -framerate "$fps" \
+            -i "${dir}/${image}.%04d.png" \
+            -c:v libx264 -pix_fmt yuv420p \
+            "$video.$fmt"
+    elif command -v mencoder >/dev/null 2>&1 ; then
+        echo "Creating image with mencoder..."
+        mencoder \
+            "mf://$dir/$image.*.png" \
+            -mf fps="$fps" \
+            -o "$video.$fmt" \
+            -ovc x264
+    else
+        error "Please install avconv or mencoder"
+    fi
+fi
