@@ -1,0 +1,90 @@
+processors 1 1 1
+units   	 si
+atom_style	 sphere
+atom_modify	 map array
+boundary	 m m m
+newton 		 off
+communicate	 single vel yes
+
+# Declare domain
+
+region 		domain cylinder y 0 0 0.025 0 0.5 units box  #dim c1 c2 radius lo hi
+create_box 	1 domain
+
+# Neighbor listing
+
+neighbor	0.01 bin
+neigh_modify	every 1 check no
+
+# Material and interaction properties required
+
+fix 		m1 all property/global youngsModulus peratomtype 1e8 
+fix 		m2 all property/global poissonsRatio peratomtype 0.24 
+fix 		m3 all property/global coefficientRestitution peratomtypepair 1 0.97 
+fix 		m4 all property/global coefficientFriction peratomtypepair 1 0.3
+
+# Particle insertion
+
+fix 		sphere1 all particletemplate/sphere 123457 atom_type 1 density constant 2500 radius constant 0.003
+fix		pdd all particledistribution/discrete 63241 1 sphere1 1.0 #mass based distribution
+region 		factory cylinder y 0 0 0.023 0.05 0.40 units box  #dim c1 c2 radius lo hi
+
+#set pts all omegax 0 omegay 0 omegaz 0 vx 0 vy 0 vz 0 shape 0.001 0.002 0.001 density 600
+
+fix 		ins all insert/rate/region seed 15485863 distributiontemplate pdd nparticles 2000 particlerate 2000 insert_every 10000 orientation random &
+overlapcheck yes vel constant 0 0 0 region factory ntry_mc 10000 # number of monte carlo steps to calculate region volume
+
+
+# Import mesh from cad:
+fix		cad1 all mesh/surface file  N2.stl type 1 scale 0.001 curvature_tolerant yes
+
+
+# Use the imported mesh as granular wall
+fix 		geometry all wall/gran model hertz tangential history mesh n_meshes 1 meshes cad1 
+
+# Define the physics
+neigh_modify 	delay 0
+pair_style 	gran model hertz tangential history 
+pair_coeff 	* *
+
+### Detailed settings
+# Integrator
+fix             integrate all nve/sphere
+
+# Gravity
+fix 		grav all gravity 9.81 vector 0.0 1.0 0.0
+
+# Time step
+timestep 	0.000001
+
+# Thermodynamic output settings
+thermo_style 	custom step atoms ke cpu
+thermo 		10000
+thermo_modify 	norm no lost ignore
+
+# Check time step and initialize dump file
+
+fix 		ctg all check/timestep/gran 1 0.001 0.01
+run 		1
+unfix 		ctg
+
+
+
+# Create imaging information
+
+shell 		mkdir dump_1 cord_1 post_1
+dump 		dumpstl all stl 100000 dump_1/dump*.stl
+dump 		4a all custom 100000 cord_1/cord id radius radius radius x y z 
+dump		dmp all custom/vtk 100000 post_1/dump*.sphere.vtk type x y z radius radius radius vx vy vz fx fy fz
+
+#restart files
+restart 	100000 cyl.restart restart_data
+
+# Fill the cylinder
+run 		1000000 
+
+unfix 		ins
+
+run             500000
+
+
